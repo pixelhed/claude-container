@@ -1,0 +1,5 @@
+#!/bin/bash
+## Host: Open a bash shell inside the container
+
+cd "$(dirname "$0")/.."
+docker compose exec claude bash

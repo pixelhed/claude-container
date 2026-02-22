@@ -1,0 +1,6 @@
+#!/bin/bash
+## Host: Stop the container (preserves volumes)
+
+cd "$(dirname "$0")/.."
+docker compose down
+echo "✅ Stopped. Config and history preserved in Docker volumes."

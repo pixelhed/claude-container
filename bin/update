@@ -1,0 +1,20 @@
+#!/bin/bash
+## Container: Check for and install updates to global npm packages
+## Note: Claude Code uses native installer and auto-updates itself
+
+export TMPDIR=/home/node/.claude/tmp
+mkdir -p "$TMPDIR"
+
+sleep 2
+
+_check_update() {
+    local pkg="$1"
+    local installed=$(npm list -g "$pkg" --depth=0 2>/dev/null | grep "$pkg@" | sed 's/.*@//')
+    local latest=$(npm view "$pkg" version 2>/dev/null)
+    if [ -n "$latest" ] && [ "$installed" != "$latest" ]; then
+        echo "   ⬆️  Updating $pkg: $installed → $latest"
+        npm install -g "$pkg@$latest" --loglevel=error 2>/dev/null
+    fi
+}
+
+_check_update "get-shit-done-cc"

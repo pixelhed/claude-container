@@ -1,0 +1,18 @@
+#!/bin/bash
+## Host: Run Claude Code with --dangerously-skip-permissions inside the container
+##
+## Usage:
+##   bin/claude                              Interactive YOLO mode
+##   bin/claude -p "fix all lint errors"     Headless with prompt
+##   bin/claude --print "explain this"       Print mode
+
+set -e
+cd "$(dirname "$0")/.."
+
+if ! docker compose ps --status running 2>/dev/null | grep -q claude; then
+    echo "Container not running. Starting..."
+    docker compose up -d
+    sleep 2
+fi
+
+docker compose exec -it claude claude --dangerously-skip-permissions "$@"

@@ -1,0 +1,26 @@
+#!/bin/bash
+## Host: Show container status and installed versions
+
+cd "$(dirname "$0")/.."
+
+echo "── Container ──"
+docker compose ps 2>/dev/null || echo "Not running"
+
+if docker compose ps --status running 2>/dev/null | grep -q claude; then
+    echo ""
+    echo "── Versions ──"
+    docker compose exec claude bash -c \
+        "echo \"   claude-code: \$(npm list -g @anthropic-ai/claude-code --depth=0 2>/dev/null | grep claude-code@ | sed 's/.*@//')\" && \
+         echo \"   gsd:         \$(npm list -g get-shit-done-cc --depth=0 2>/dev/null | grep get-shit-done@ | sed 's/.*@//')\" && \
+         echo \"   node:        \$(node -v)\" && \
+         echo \"   php:         \$(php -v 2>/dev/null | head -1 | awk '{print \$2}')\" && \
+         echo \"   composer:    \$(composer -V 2>/dev/null | awk '{print \$3}')\" && \
+         echo \"   python:      \$(python3 --version 2>/dev/null | awk '{print \$2}')\""
+    echo ""
+    echo "── Workspace ──"
+    docker compose exec claude bash -c "ls /workspace/ 2>/dev/null | head -20"
+    echo ""
+    echo "── Ecosystem ──"
+    docker compose exec claude bash -c \
+        "if [ -d /home/node/claude-ecosystem ]; then echo '   ✅ Mounted'; else echo '   ⚠️  Not mounted'; fi"
+fi

@@ -1,0 +1,4 @@
+.env
+settings.container.json
+.DS_Store
+.archived/

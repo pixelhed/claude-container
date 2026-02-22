@@ -1,0 +1,116 @@
+#!/bin/bash
+## Container: Entrypoint — wires up the claude-ecosystem on start
+
+set -e
+
+ECOSYSTEM_DIR="/home/node/claude-ecosystem"
+CLAUDE_HOME="/home/node/.claude"
+
+# Ensure TMPDIR is on the same filesystem as ~/.claude (for plugin installs)
+export TMPDIR="$CLAUDE_HOME/tmp"
+mkdir -p "$TMPDIR"
+
+# ---------------------------------------------------------------
+# 1. Link global config from ecosystem (if mounted)
+# ---------------------------------------------------------------
+if [ -d "$ECOSYSTEM_DIR/global" ]; then
+    echo "🔗 Wiring claude-ecosystem into container..."
+
+    [ -f "$ECOSYSTEM_DIR/global/CLAUDE.md" ] && \
+        ln -sf "$ECOSYSTEM_DIR/global/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
+
+    if [ -f "$CLAUDE_HOME/settings.container.json" ]; then
+        cp -f "$CLAUDE_HOME/settings.container.json" "$CLAUDE_HOME/settings.json"
+        echo "   Using container-specific settings.json (writable copy)"
+    elif [ -f "$ECOSYSTEM_DIR/global/settings.json" ]; then
+        cp -f "$ECOSYSTEM_DIR/global/settings.json" "$CLAUDE_HOME/settings.json"
+        echo "   Using ecosystem settings.json (writable copy)"
+    fi
+
+    if [ -d "$ECOSYSTEM_DIR/global/commands" ]; then
+        mkdir -p "$CLAUDE_HOME/commands"
+        for dir in "$ECOSYSTEM_DIR/global/commands"/*/; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            ln -sfn "$dir" "$CLAUDE_HOME/commands/$name"
+            echo "   ✓ command: $name"
+        done
+    fi
+
+    if [ -d "$ECOSYSTEM_DIR/global/skills" ]; then
+        mkdir -p "$CLAUDE_HOME/skills"
+        for dir in "$ECOSYSTEM_DIR/global/skills"/*/; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            ln -sfn "$dir" "$CLAUDE_HOME/skills/$name"
+            echo "   ✓ skill: $name"
+        done
+    fi
+
+    if [ -d "$ECOSYSTEM_DIR/global/rules" ]; then
+        mkdir -p "$CLAUDE_HOME/rules"
+        for file in "$ECOSYSTEM_DIR/global/rules"/*.md; do
+            [ -f "$file" ] || continue
+            name=$(basename "$file")
+            ln -sf "$file" "$CLAUDE_HOME/rules/$name"
+            echo "   ✓ rule: $name"
+        done
+    fi
+
+    if [ -d "$ECOSYSTEM_DIR/global/agents" ]; then
+        mkdir -p "$CLAUDE_HOME/agents"
+        for file in "$ECOSYSTEM_DIR/global/agents"/*.md; do
+            [ -f "$file" ] || continue
+            name=$(basename "$file")
+            ln -sf "$file" "$CLAUDE_HOME/agents/$name"
+            echo "   ✓ agent: $name"
+        done
+    fi
+
+    echo "✅ Ecosystem wired up"
+else
+    echo "ℹ️  No claude-ecosystem mounted — using defaults"
+fi
+
+# ---------------------------------------------------------------
+# 2. Auto-install GSD if not present in volume
+# ---------------------------------------------------------------
+if [ ! -d "$CLAUDE_HOME/commands/gsd" ] && command -v npx &>/dev/null; then
+    echo "📦 GSD not found in volume — installing..."
+    printf '1\n1\n\n\n' | npx get-shit-done-cc@latest 2>&1 | grep -E "^\s*[✓✗]|Installing|installed" || true
+    echo "   ✅ GSD installed"
+else
+    echo "   ✓ GSD already installed"
+fi
+
+# ---------------------------------------------------------------
+# 3. Auto-install plugins if not present in volume
+# ---------------------------------------------------------------
+if ! grep -q "n8n-mcp-skills" "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null; then
+    echo "📦 Installing plugins..."
+    claude plugin marketplace add czlonkowski/n8n-skills 2>&1 || true
+    claude plugin install n8n-mcp-skills 2>&1 || true
+    claude plugin install context7 2>&1 || true
+    echo "   ✅ Plugins installed"
+else
+    echo "   ✓ Plugins already installed"
+fi
+
+# ---------------------------------------------------------------
+# 4. Background update check
+# ---------------------------------------------------------------
+if [ "${SKIP_UPDATE_CHECK:-0}" != "1" ]; then
+    update-packages &
+fi
+
+# ---------------------------------------------------------------
+# 5. Ready
+# ---------------------------------------------------------------
+echo ""
+echo "🐳 Container ready."
+echo "   cc                  = claude --dangerously-skip-permissions"
+echo "   claude              = normal Claude Code"
+echo "   gsd                 = installed globally (use /gsd in Claude)"
+echo ""
+
+exec "$@"

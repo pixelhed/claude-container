@@ -1,0 +1,15 @@
+#!/bin/bash
+## Host: Remove container, volumes, and image
+
+set -e
+cd "$(dirname "$0")/.."
+
+read -p "⚠️  Delete container, volumes, and image? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    docker compose down -v
+    docker rmi "$(docker compose config --images 2>/dev/null)" 2>/dev/null || true
+    echo "✅ Removed."
+else
+    echo "Cancelled."
+fi

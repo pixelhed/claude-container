@@ -1,0 +1,12 @@
+#!/bin/bash
+## Host: Rebuild image with latest Claude Code + GSD (no-cache)
+
+set -e
+cd "$(dirname "$0")/.."
+
+echo "🔄 Rebuilding with latest packages..."
+docker compose build --no-cache
+docker compose up -d
+
+echo ""
+echo "✅ Rebuilt. Run bin/status to check versions."

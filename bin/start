@@ -1,0 +1,15 @@
+#!/bin/bash
+## Host: Build and start the Claude Code container
+
+set -e
+cd "$(dirname "$0")/.."
+
+docker compose build
+docker compose up -d
+
+echo ""
+echo "✅ Container running. Project mounted at /workspace"
+echo ""
+echo "  bin/shell              Open a shell inside the container"
+echo "  bin/claude             Run Claude Code in YOLO mode"
+echo "  bin/stop               Stop the container"

@@ -1,0 +1,134 @@
+#!/bin/bash
+## Host: One-shot project setup with --adopt mode
+##
+## Usage:
+##   bin/quick-setup <project-path> <compose-name>
+##
+## Examples:
+##   bin/quick-setup ~/projects/my-app my-app
+##
+## Auth is handled INSIDE the container after setup:
+##   bin/shell → claude auth login
+##
+## What it does:
+##   1. Runs bin/setup --adopt (moves existing files → workspace/)
+##   2. Writes .env with ecosystem path and project name
+##   3. Builds and starts the container
+##   4. Runs verification checks
+##   5. Prompts you to authenticate inside the container
+
+set -e
+
+TEMPLATE="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── Parse args ──
+PROJECT="$1"
+COMPOSE_NAME="$2"
+
+if [ -z "$PROJECT" ] || [ -z "$COMPOSE_NAME" ]; then
+    echo "Usage: bin/quick-setup <project-path> <compose-name>"
+    echo ""
+    echo "  project-path    Path to the project directory to adopt"
+    echo "  compose-name    Short name for COMPOSE_PROJECT_NAME (e.g. my-app)"
+    echo ""
+    echo "Examples:"
+    echo "  bin/quick-setup ~/projects/my-app my-app"
+    echo "  bin/quick-setup ~/Git-repo/n8n/kdb/akeneo-logo-remover kdb-logo-remover"
+    echo ""
+    echo "Auth is handled inside the container after setup."
+    exit 1
+fi
+
+# Resolve to absolute path
+PROJECT="$(cd "$PROJECT" 2>/dev/null && pwd || echo "$PROJECT")"
+CONTAINER_DIR="$PROJECT/claude-container"
+
+echo "════════════════════════════════════════════"
+echo "  Project:  $PROJECT"
+echo "  Name:     $COMPOSE_NAME"
+echo "  Mode:     --adopt"
+echo "════════════════════════════════════════════"
+echo ""
+
+# ── Step 1: Run setup ──
+if [ -d "$PROJECT/workspace" ]; then
+    echo "▶ Step 1: workspace/ exists — updating claude-container/ only..."
+    "$TEMPLATE/bin/setup" "$PROJECT"
+else
+    echo "▶ Step 1: Running bin/setup --adopt..."
+    "$TEMPLATE/bin/setup" "$PROJECT" --adopt
+fi
+echo ""
+
+# ── Step 2: Write .env ──
+echo "▶ Step 2: Configuring .env..."
+
+cat > "$CONTAINER_DIR/.env" <<ENVEOF
+# ── Authentication ──
+# Auth is managed inside the container via: claude auth login
+# The token persists in the claude-config Docker volume.
+# Only set these if you want to override container auth:
+# ANTHROPIC_API_KEY=
+# CLAUDE_CODE_OAUTH_TOKEN=
+
+# ── Ecosystem ──
+CLAUDE_ECOSYSTEM_PATH=~/claude-ecosystem
+
+# ── Project ──
+COMPOSE_PROJECT_NAME=$COMPOSE_NAME
+
+# ── n8n MCP (used by bin/n8n dev|prod) ──
+N8N_DEV_URL=http://helios.lan:5678
+N8N_DEV_API_KEY=
+N8N_PROD_URL=https://n8n.pixelperfect.at
+N8N_PROD_API_KEY=
+ENVEOF
+
+echo "   ✅ .env written"
+echo ""
+
+# ── Step 3: Build and start ──
+echo "▶ Step 3: Building and starting container..."
+cd "$CONTAINER_DIR"
+bin/start
+echo ""
+
+# ── Step 4: Verify ──
+echo "▶ Step 4: Verification..."
+echo ""
+
+echo "── Workspace contents ──"
+docker compose exec claude bash -c "ls /workspace/ 2>/dev/null | head -20" 2>/dev/null || echo "   ⚠️  Could not list workspace"
+echo ""
+
+echo "── Ecosystem ──"
+docker compose exec claude bash -c \
+    "if [ -d /home/node/claude-ecosystem ]; then echo '   ✅ Mounted'; ls /home/node/claude-ecosystem/ | head -5; else echo '   ⚠️  Not mounted'; fi" 2>/dev/null || true
+echo ""
+
+echo "── Claude version ──"
+docker compose exec claude bash -c "claude --version 2>/dev/null" 2>/dev/null || echo "   ⚠️  claude not found"
+echo ""
+
+echo "── cc alias ──"
+docker compose exec claude bash -c "type cc 2>/dev/null && echo '   ✅ cc alias works'" 2>/dev/null || echo "   ⚠️  cc alias not found"
+echo ""
+
+# ── Step 5: Auth prompt ──
+echo "════════════════════════════════════════════"
+echo "  ✅ $COMPOSE_NAME is running!"
+echo ""
+echo "  Next: authenticate inside the container:"
+echo ""
+echo "    cd $CONTAINER_DIR"
+echo "    bin/shell"
+echo "    claude auth login"
+echo ""
+echo "  This opens a browser OAuth flow. The token"
+echo "  persists in the Docker volume across restarts."
+echo ""
+echo "  Then you're ready:"
+echo "    bin/claude         # run Claude Code"
+echo "    bin/status         # check status"
+echo "    bin/stop           # stop container"
+echo "════════════════════════════════════════════"

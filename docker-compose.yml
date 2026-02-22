@@ -1,0 +1,40 @@
+services:
+  claude:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-claude}-code
+    stdin_open: true
+    tty: true
+
+    volumes:
+      # ── Project code (sibling workspace/ directory) ──
+      - ../workspace:/workspace
+
+      # ── Claude Ecosystem (read-only) ──
+      - ${CLAUDE_ECOSYSTEM_PATH:-~/claude-ecosystem}:/home/node/claude-ecosystem:ro
+
+      # ── Persist Claude auth & session ──
+      - claude-config:/home/node/.claude
+      - claude-history:/home/node/.bash_history_dir
+
+      # ── Container-specific settings override ──
+      - ./settings.container.json:/home/node/.claude/settings.container.json:ro
+
+      # ── Git config (read-only) ──
+      - ~/.gitconfig:/home/node/.gitconfig:ro
+
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - SKIP_UPDATE_CHECK=${SKIP_UPDATE_CHECK:-0}
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - HOME=/home/node
+
+volumes:
+  claude-config:
+  claude-history:
