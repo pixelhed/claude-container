@@ -8,8 +8,8 @@ services:
     tty: true
 
     volumes:
-      # ── Project code (sibling workspace/ directory) ──
-      - ../workspace:/workspace
+      # ── Project root (workspace/ + .git in one mount) ──
+      - ..:/workspace
 
       # ── Claude Ecosystem (read-only) ──
       - ${CLAUDE_ECOSYSTEM_PATH:-~/claude-ecosystem}:/home/node/claude-ecosystem:ro
