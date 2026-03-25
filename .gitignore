@@ -1,4 +1,5 @@
 .env
-settings.container.json
+build.local.conf
+settings.container.local.json
 .DS_Store
 .archived/
