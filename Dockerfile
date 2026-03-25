@@ -1,33 +1,40 @@
 FROM node:20-bookworm-slim
 
+ARG INSTALL_PHP=false
+ARG INSTALL_PYTHON=true
+ARG INSTALL_COMPOSER=false
+
+# Always-installed base packages
 RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    sudo \
-    ca-certificates \
-    ripgrep \
-    fd-find \
-    jq \
-    tree \
-    htop \
-    unzip \
-    zsh \
-    iptables \
-    ipset \
-    dnsutils \
-    python3 \
-    python3-pip \
-    python3-venv \
-    php-cli \
-    php-mbstring \
-    php-xml \
-    php-curl \
-    php-zip \
-    php-intl \
+    git curl sudo ca-certificates \
+    ripgrep fd-find jq tree htop unzip zsh \
+    iptables ipset dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh || true
+# Conditional: Python
+RUN if [ "$INSTALL_PYTHON" = "true" ]; then \
+    apt-get update && apt-get install -y \
+    python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Conditional: PHP
+RUN if [ "$INSTALL_PHP" = "true" ]; then \
+    apt-get update && apt-get install -y \
+    php-cli php-mbstring php-xml php-curl php-zip php-intl \
+    && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Conditional: Composer (requires PHP)
+RUN if [ "$INSTALL_COMPOSER" = "true" ]; then \
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; \
+    fi
+
+# UV (Python package manager) — only if Python installed
+RUN if [ "$INSTALL_PYTHON" = "true" ]; then \
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh || true; \
+    fi
+
 RUN npm install -g get-shit-done-cc
 
 ARG USERNAME=node
@@ -46,7 +53,7 @@ RUN mkdir -p /workspace \
 
 COPY bin/firewall /usr/local/bin/init-firewall
 COPY bin/entrypoint /usr/local/bin/entrypoint
-COPY bin/update /usr/local/bin/update-packages
+COPY bin/update-packages /usr/local/bin/update-packages
 RUN chmod 755 /usr/local/bin/init-firewall /usr/local/bin/entrypoint /usr/local/bin/update-packages
 
 WORKDIR /workspace
