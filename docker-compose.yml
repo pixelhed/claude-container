@@ -18,8 +18,9 @@ services:
       - claude-config:/home/node/.claude
       - claude-history:/home/node/.bash_history_dir
 
-      # ── Container-specific settings override ──
+      # ── Settings (merged by entrypoint) ──
       - ./settings.container.json:/home/node/.claude/settings.container.json:ro
+      - ./settings.container.local.json:/home/node/.claude/settings.container.local.json:ro
 
       # ── Git config (read-only) ──
       - ~/.gitconfig:/home/node/.gitconfig:ro
