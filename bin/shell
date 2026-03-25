@@ -1,5 +1,5 @@
 #!/bin/bash
 ## Host: Open a bash shell inside the container
 
-cd "$(dirname "$0")/.."
-docker compose exec claude bash
+source "$(dirname "$0")/compose-args"
+docker compose $COMPOSE_FILES exec claude bash

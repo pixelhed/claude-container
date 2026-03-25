@@ -1,20 +1,30 @@
 #!/bin/bash
-## Container: Check for and install updates to global npm packages
-## Note: Claude Code uses native installer and auto-updates itself
+## Host: Update claude-container to latest version
+##
+## Usage:
+##   bin/update              Pull latest template
+##   bin/update --rebuild    Pull and rebuild image
 
-export TMPDIR=/home/node/.claude/tmp
-mkdir -p "$TMPDIR"
+set -e
+cd "$(dirname "$0")/.."
 
-sleep 2
+echo "Updating claude-container..."
 
-_check_update() {
-    local pkg="$1"
-    local installed=$(npm list -g "$pkg" --depth=0 2>/dev/null | grep "$pkg@" | sed 's/.*@//')
-    local latest=$(npm view "$pkg" version 2>/dev/null)
-    if [ -n "$latest" ] && [ "$installed" != "$latest" ]; then
-        echo "   ⬆️  Updating $pkg: $installed → $latest"
-        npm install -g "$pkg@$latest" --loglevel=error 2>/dev/null
-    fi
-}
+# We're inside the submodule — go to the project root
+PROJECT_ROOT="$(cd .. && pwd)"
 
-_check_update "get-shit-done-cc"
+cd "$PROJECT_ROOT"
+git submodule update --remote claude-container
+
+echo "Updated to: $(cd claude-container && git log --oneline -1)"
+
+if [ "${1:-}" = "--rebuild" ]; then
+    echo ""
+    echo "Rebuilding..."
+    cd claude-container
+    bin/stop 2>/dev/null || true
+    bin/rebuild
+else
+    echo ""
+    echo "Run 'bin/update --rebuild' to also rebuild the image."
+fi

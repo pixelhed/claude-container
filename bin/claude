@@ -7,12 +7,12 @@
 ##   bin/claude --print "explain this"       Print mode
 
 set -e
-cd "$(dirname "$0")/.."
+source "$(dirname "$0")/compose-args"
 
-if ! docker compose ps --status running 2>/dev/null | grep -q claude; then
+if ! docker compose $COMPOSE_FILES ps --status running 2>/dev/null | grep -q claude; then
     echo "Container not running. Starting..."
-    docker compose up -d
+    docker compose $COMPOSE_FILES up -d
     sleep 2
 fi
 
-docker compose exec -it claude claude --dangerously-skip-permissions "$@"
+docker compose $COMPOSE_FILES exec -it claude claude --dangerously-skip-permissions "$@"

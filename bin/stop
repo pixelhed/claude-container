@@ -1,6 +1,6 @@
 #!/bin/bash
 ## Host: Stop the container (preserves volumes)
 
-cd "$(dirname "$0")/.."
-docker compose down
+source "$(dirname "$0")/compose-args"
+docker compose $COMPOSE_FILES down
 echo "✅ Stopped. Config and history preserved in Docker volumes."
