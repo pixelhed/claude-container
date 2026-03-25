@@ -104,7 +104,7 @@ INSTALL_PYTHON=true
 INSTALL_COMPOSER=false
 ```
 
-### Project overrides (`build.local.conf`, outside submodule, gitignored)
+### Project overrides (`build.local.conf`, inside submodule, gitignored by submodule)
 
 ```ini
 INSTALL_PHP=true
@@ -163,7 +163,7 @@ Settings control **hooks**, **MCP servers**, and **Claude Code preferences**. Pe
 
 Template-level hooks, MCP servers, and preferences that apply to all projects.
 
-### Project overrides (`settings.container.local.json`, outside submodule, gitignored)
+### Project overrides (`settings.container.local.json`, inside submodule, gitignored by submodule)
 
 ```json
 {
@@ -251,7 +251,7 @@ Project-specific scripts that run inside the container. Example: `n8n` for switc
 
 ### Dispatch mechanism
 
-`bin/exec` is an explicit dispatcher: `bin/exec n8n dev` runs `../workspace/bin/n8n dev` inside the container via `docker compose exec`. No symlink magic, no catch-all — the user knows they're running a workspace script.
+`bin/exec` is an explicit dispatcher: `bin/exec n8n dev` translates to `docker compose exec <service> /workspace/bin/n8n dev` inside the container. No symlink magic, no catch-all — the user knows they're running a workspace script.
 
 Additionally, the entrypoint adds `/workspace/bin/` to `PATH` inside the container, so workspace scripts are also available during interactive `bin/shell` sessions without the `bin/exec` prefix.
 
@@ -312,6 +312,8 @@ or entrypoint: update QUICKSTART.md and docs/guide.md to reflect the changes.
 - Replace `bin/quick-setup` with simplified `bin/setup` (post-submodule-add helper)
 - Add `bin/exec` dispatcher
 - Update `.gitignore`: track `settings.container.json`, ignore `build.local.conf` and `settings.container.local.json`
+- Implement settings merge in entrypoint (template + local overlay → `~/.claude/settings.json`)
+- Add `/workspace/bin/` to PATH in entrypoint
 - Add docs (QUICKSTART.md, docs/guide.md, CLAUDE.md)
 - Enforce `COMPOSE_PROJECT_NAME` in `bin/start`
 - Commit and push to private GitHub repo
