@@ -22,10 +22,9 @@ services:
       - ./settings.container.json:/home/node/.claude/settings.container.json:ro
       - ./settings.container.local.json:/home/node/.claude/settings.container.local.json:ro
 
-      # ── Git + GitHub (read-only) ──
+      # ── Git + SSH (read-only) ──
       - ~/.gitconfig:/home/node/.gitconfig:ro
       - ~/.ssh:/home/node/.ssh:ro
-      - ~/.config/gh:/home/node/.config/gh:ro
 
     cap_add:
       - NET_ADMIN
@@ -36,6 +35,7 @@ services:
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
       - SKIP_UPDATE_CHECK=${SKIP_UPDATE_CHECK:-0}
       - NODE_OPTIONS=--max-old-space-size=4096
+      - GH_TOKEN=${GH_TOKEN:-}
       - HOME=/home/node
 
 volumes:
