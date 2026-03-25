@@ -1,190 +1,96 @@
 #!/bin/bash
-## Host: Set up a project with claude-container + workspace
+## Host: Post-submodule-add project setup
+##
+## Run this after: git submodule add <repo-url> claude-container
 ##
 ## Usage:
-##   bin/setup /path/to/project                                  # empty workspace
-##   bin/setup /path/to/project --clone git@github.com:u/r.git   # clone into workspace
-##   bin/setup /path/to/project --link /path/to/existing/repo    # symlink as workspace
-##   bin/setup /path/to/project --adopt                          # restructure in place
+##   cd claude-container && bin/setup
+##   cd claude-container && bin/setup --adopt    # move existing files into workspace/
 ##
-## Modes:
-##   (default)   Create empty workspace/
-##   --clone     Git clone a repo into workspace/
-##   --link      Symlink an existing directory as workspace/ (no copy)
-##   --adopt     Move existing project contents into workspace/ (restructure in place)
-##
-## Result:
-##   /path/to/project/
-##   ├── claude-container/   ← Docker setup
-##   └── workspace/          ← your code
+## What it does:
+##   1. Creates ../workspace/ directory (or moves existing files into it with --adopt)
+##   2. Creates ../workspace/bin/ directory
+##   3. Copies .env.example to .env if needed
+##   4. Prompts for COMPOSE_PROJECT_NAME
+##   5. Creates empty settings.container.local.json if needed
 
 set -e
+cd "$(dirname "$0")/.."
 
-TARGET="$1"
-shift || true
+MODE="default"
+[ "${1:-}" = "--adopt" ] && MODE="adopt"
 
-if [ -z "$TARGET" ]; then
-    echo "Usage: bin/setup /path/to/project [--clone <url> | --link <path> | --adopt]"
-    echo ""
-    echo "Modes:"
-    echo "  (no flag)     Create project with empty workspace/"
-    echo "  --clone URL   Clone a git repo into workspace/"
-    echo "  --link PATH   Symlink existing directory as workspace/"
-    echo "  --adopt       Restructure existing project: move contents → workspace/"
-    exit 1
-fi
+PROJECT_ROOT="$(cd .. && pwd)"
 
-SOURCE="$(cd "$(dirname "$0")/.." && pwd)"
-
-# ── Parse flags ──
-MODE="empty"
-CLONE_URL=""
-LINK_PATH=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --clone)  MODE="clone";  CLONE_URL="$2"; shift 2 ;;
-        --link)   MODE="link";   LINK_PATH="$2"; shift 2 ;;
-        --adopt)  MODE="adopt";  shift ;;
-        *)        echo "Unknown option: $1"; exit 1 ;;
-    esac
-done
-
-# ── Resolve target ──
-TARGET="$(cd "$TARGET" 2>/dev/null && pwd || echo "$TARGET")"
-DEST="$TARGET/claude-container"
-
-# Guard: don't nest claude-container inside itself
-if [ -f "$TARGET/Dockerfile" ] && [ -f "$TARGET/docker-compose.yml" ]; then
-    echo "❌ $TARGET looks like a claude-container/ directory, not a project root."
-    echo "   Run from the parent: bin/setup $(dirname "$TARGET")"
-    exit 1
-fi
-
-# ── Adopt mode: restructure existing project ──
+# ── Adopt mode: move existing project files into workspace/ ──
 if [ "$MODE" = "adopt" ]; then
-    if [ ! -d "$TARGET" ]; then
-        echo "❌ Directory not found: $TARGET"
-        exit 1
-    fi
-
-    if [ -d "$TARGET/workspace" ]; then
-        echo "❌ workspace/ already exists in $TARGET — looks already adopted."
-        echo "   Run without --adopt to update claude-container/."
-        exit 1
-    fi
-
-    echo "🔄 Adopting $TARGET..."
-    echo "   Moving contents into workspace/..."
-
-    # Create a temp dir inside TARGET to collect files
-    TMPWORK="$TARGET/.workspace-tmp-$$"
-    mkdir -p "$TMPWORK"
-
-    # Move everything except claude-container and the temp dir itself
-    for item in "$TARGET"/*; do
-        name=$(basename "$item")
-        [ "$name" = "claude-container" ] && continue
-        [ "$name" = ".workspace-tmp-$$" ] && continue
-        mv "$item" "$TMPWORK/"
-    done
-
-    # Move hidden files too (dotfiles)
-    for item in "$TARGET"/.[!.]*; do
-        [ ! -e "$item" ] && continue
-        name=$(basename "$item")
-        [ "$name" = ".DS_Store" ] && continue
-        [ "$name" = ".workspace-tmp-$$" ] && continue
-        mv "$item" "$TMPWORK/"
-    done
-
-    # Rename temp → workspace
-    mv "$TMPWORK" "$TARGET/workspace"
-    echo "   ✅ Moved all contents to workspace/"
-fi
-
-# ── Install/update claude-container/ ──
-if [ -d "$DEST" ]; then
-    read -p "⚠️  claude-container/ exists. Update it? (keeps .env) [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Cancelled."
-        exit 0
-    fi
-    [ -f "$DEST/.env" ] && cp "$DEST/.env" "/tmp/_cc-env-backup-$$"
-    rm -rf "$DEST"
-fi
-
-# Ensure cwd is valid (may have been deleted above)
-cd "$TARGET"
-
-echo "📦 Installing claude-container/..."
-rsync -a \
-    --exclude='.env' \
-    --exclude='.git' \
-    --exclude='.DS_Store' \
-    --exclude='cowork-prompt.md' \
-    "$SOURCE/" "$DEST/"
-
-chmod +x "$DEST/bin/"*
-
-# Restore or create .env
-if [ -f "/tmp/_cc-env-backup-$$" ]; then
-    mv "/tmp/_cc-env-backup-$$" "$DEST/.env"
-    echo "   Restored existing .env"
-elif [ ! -f "$DEST/.env" ]; then
-    cp "$DEST/.env.example" "$DEST/.env"
-    echo "   Created .env — edit to add your auth token"
-fi
-
-# ── Set up workspace/ (for non-adopt modes) ──
-if [ "$MODE" = "clone" ]; then
-    if [ ! -d "$TARGET/workspace" ]; then
-        echo "📥 Cloning into workspace/..."
-        git clone "$CLONE_URL" "$TARGET/workspace"
+    if [ -d "../workspace" ]; then
+        echo "workspace/ already exists — skipping adopt"
     else
-        echo "   workspace/ already exists, skipping clone"
-    fi
-elif [ "$MODE" = "link" ]; then
-    LINK_PATH="$(cd "$LINK_PATH" && pwd)"
-    if [ ! -d "$TARGET/workspace" ] && [ ! -L "$TARGET/workspace" ]; then
-        echo "🔗 Linking $LINK_PATH → workspace/"
-        ln -sf "$LINK_PATH" "$TARGET/workspace"
-    else
-        echo "   workspace/ already exists, skipping link"
-    fi
-elif [ "$MODE" = "empty" ]; then
-    if [ ! -d "$TARGET/workspace" ] && [ ! -L "$TARGET/workspace" ]; then
-        mkdir -p "$TARGET/workspace"
-        echo "   Created empty workspace/"
-    else
-        echo "   workspace/ already exists — keeping it"
+        echo "Moving project contents into workspace/..."
+        TMPWORK="$PROJECT_ROOT/.workspace-tmp-$$"
+        mkdir -p "$TMPWORK"
+
+        for item in "$PROJECT_ROOT"/*; do
+            name=$(basename "$item")
+            [ "$name" = "claude-container" ] && continue
+            [ "$name" = ".workspace-tmp-$$" ] && continue
+            mv "$item" "$TMPWORK/"
+        done
+
+        for item in "$PROJECT_ROOT"/.[!.]*; do
+            [ ! -e "$item" ] && continue
+            name=$(basename "$item")
+            [ "$name" = ".DS_Store" ] && continue
+            [ "$name" = ".gitmodules" ] && continue
+            [ "$name" = ".git" ] && continue
+            [ "$name" = ".workspace-tmp-$$" ] && continue
+            mv "$item" "$TMPWORK/"
+        done
+
+        mv "$TMPWORK" "$PROJECT_ROOT/workspace"
+        echo "   Moved all contents to workspace/"
     fi
 fi
-# adopt mode: workspace/ was created above
 
-# ── .gitignore at wrapper level ──
-GITIGNORE="$TARGET/.gitignore"
-if [ ! -f "$GITIGNORE" ]; then
-    cat > "$GITIGNORE" <<'EOF'
-claude-container/.env
-claude-container/settings.container.json
-.DS_Store
-EOF
-    echo "   Created .gitignore"
+# ── Create workspace/ if not exists ──
+if [ ! -d "../workspace" ]; then
+    mkdir -p "../workspace"
+    echo "Created workspace/"
 fi
 
-echo ""
-echo "✅ Ready:"
-echo ""
-echo "   $TARGET/"
-echo "   ├── claude-container/"
-if [ -L "$TARGET/workspace" ]; then
-    echo "   └── workspace/ → $(readlink "$TARGET/workspace")"
+# ── Create workspace/bin/ ──
+mkdir -p "../workspace/bin"
+
+# ── .env ──
+if [ ! -f ".env" ]; then
+    cp ".env.example" ".env"
+    echo "Created .env from .env.example"
+
+    # Prompt for COMPOSE_PROJECT_NAME
+    read -p "Project name for COMPOSE_PROJECT_NAME: " project_name
+    if [ -n "$project_name" ]; then
+        sed -i.bak "s/COMPOSE_PROJECT_NAME=myproject/COMPOSE_PROJECT_NAME=$project_name/" .env
+        rm -f .env.bak
+        echo "   Set COMPOSE_PROJECT_NAME=$project_name"
+    fi
 else
-    echo "   └── workspace/"
+    echo ".env already exists — keeping it"
 fi
+
+# ── settings.container.local.json ──
+if [ ! -f "settings.container.local.json" ]; then
+    echo '{}' > settings.container.local.json
+    echo "Created empty settings.container.local.json"
+fi
+
 echo ""
-echo "   cd $TARGET/claude-container"
-echo "   \$EDITOR .env                    # add auth token"
-echo "   bin/start                        # build + start"
-echo "   bin/claude                       # YOLO mode"
+echo "Ready:"
+echo ""
+echo "   $(pwd)/"
+echo "   .env                             edit credentials"
+echo "   settings.container.local.json    project-specific hooks/MCP"
+echo "   build.local.conf                 project-specific build args"
+echo ""
+echo "   bin/start                        build + start"
+echo "   bin/claude                       YOLO mode"
