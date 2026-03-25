@@ -1,0 +1,38 @@
+#!/bin/bash
+## Host: Run a workspace/bin/ script inside the container
+##
+## Usage:
+##   bin/exec <script> [args...]
+##
+## Examples:
+##   bin/exec n8n dev          Run workspace/bin/n8n with arg "dev"
+##   bin/exec migrate          Run workspace/bin/migrate
+
+set -e
+source "$(dirname "$0")/compose-args"
+
+SCRIPT="$1"
+if [ -z "$SCRIPT" ]; then
+    echo "Usage: bin/exec <script> [args...]"
+    echo ""
+    echo "Runs workspace/bin/<script> inside the container."
+    if [ -d "../workspace/bin" ]; then
+        echo ""
+        echo "Available scripts:"
+        ls -1 "../workspace/bin/" 2>/dev/null | sed 's/^/  /'
+    fi
+    exit 1
+fi
+shift
+
+if [ ! -f "../workspace/bin/$SCRIPT" ]; then
+    echo "Not found: workspace/bin/$SCRIPT"
+    if [ -d "../workspace/bin" ]; then
+        echo ""
+        echo "Available scripts:"
+        ls -1 "../workspace/bin/" 2>/dev/null | sed 's/^/  /'
+    fi
+    exit 1
+fi
+
+docker compose $COMPOSE_FILES exec claude /workspace/bin/"$SCRIPT" "$@"
