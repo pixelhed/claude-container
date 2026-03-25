@@ -32,35 +32,35 @@ claude-container exists as multiple divergent copies across projects (business-a
 ```
 my-project/                          # the project repo
 ├── .gitmodules                      # pins claude-container to a commit
-├── claude-container/                # submodule (READ-ONLY by convention)
+├── claude-container/                # submodule
 │   ├── bin/                         # host-side scripts
 │   │   ├── claude                   # exec Claude in YOLO mode
 │   │   ├── compose-args             # shared library (merges config + compose files)
 │   │   ├── destroy                  # remove container, volumes, images
 │   │   ├── entrypoint               # container startup (ecosystem, settings merge, plugins)
-│   │   ├── firewall                 # optional outbound network restriction
-│   │   ├── quick-setup              # one-shot project onboarding
+│   │   ├── exec                     # run workspace/bin/ scripts inside container
+│   │   ├── firewall                 # optional outbound network restriction (container-only)
 │   │   ├── rebuild                  # rebuild with --no-cache
-│   │   ├── setup                    # initialize project structure
+│   │   ├── setup                    # post-submodule-add project setup
 │   │   ├── shell                    # interactive bash in container
 │   │   ├── start                    # build + start container
 │   │   ├── status                   # show versions, mounts, health
 │   │   ├── stop                     # stop container, preserve volumes
-│   │   ├── update                   # git submodule update --remote wrapper
-│   │   └── (catch-all dispatcher)   # delegates unknown commands to workspace/bin/
+│   │   └── update                   # git submodule update --remote wrapper
 │   ├── Dockerfile                   # base image with build-arg toggles
 │   ├── docker-compose.yml           # base service definition
-│   ├── build.conf                   # default build config
-│   ├── settings.container.json      # default Claude Code settings
+│   ├── build.conf                   # default build config (tracked)
+│   ├── settings.container.json      # default Claude Code settings (tracked)
 │   ├── .env.example                 # credential template
 │   ├── QUICKSTART.md                # short getting-started guide
 │   ├── CLAUDE.md                    # rules for Claude (auto-update docs, etc.)
-│   └── docs/
-│       └── guide.md                 # comprehensive reference
-│
-├── build.local.conf                 # project build overrides (gitignored)
-├── settings.container.local.json    # project settings overlay (gitignored)
-├── .env                             # credentials (gitignored)
+│   ├── docs/
+│   │   └── guide.md                 # comprehensive reference
+│   │
+│   │  # --- project-local overrides (gitignored by submodule) ---
+│   ├── build.local.conf             # project build overrides
+│   ├── settings.container.local.json # project settings overlay
+│   └── .env                         # credentials
 │
 └── workspace/                       # project code
     ├── bin/                         # project-specific container scripts
@@ -68,11 +68,28 @@ my-project/                          # the project repo
     └── docker-compose.yml           # optional extra services
 ```
 
+### File placement rationale
+
+Project-local override files (`build.local.conf`, `settings.container.local.json`, `.env`) live **inside** the `claude-container/` directory. This keeps script paths simple — all scripts resolve files relative to their own directory without path gymnastics. These files are gitignored by the submodule's own `.gitignore`, so they never dirty the submodule or get committed upstream.
+
+### `.gitignore` (submodule)
+
+```
+.env
+build.local.conf
+settings.container.local.json
+.DS_Store
+.archived/
+```
+
+Note: `settings.container.json` and `build.conf` are **tracked** (template defaults).
+
 ### Key Rules
 
-- Files inside `claude-container/` are **never modified per-project** — the submodule stays clean
-- All project customization lives **outside** the submodule
-- Template is authoritative for its files; projects can only add new files or use designated extension points
+- Template-owned files inside `claude-container/` are **never modified per-project** — the submodule stays clean
+- Project customization uses the gitignored local override files inside the submodule, plus `workspace/` extension points
+- Template is authoritative for its tracked files; projects extend through designated interfaces only
+- `COMPOSE_PROJECT_NAME` **must** be set in `.env` per project — `bin/start` will error if unset to prevent container name collisions
 
 ---
 
@@ -96,7 +113,7 @@ INSTALL_COMPOSER=true
 
 ### Resolution
 
-`bin/compose-args` reads `build.conf`, then overlays `build.local.conf` (local wins). Merged values are passed as `--build-arg` flags to `docker compose build`.
+`bin/compose-args` reads `build.conf` then overlays `build.local.conf` (local wins) using shell `source` — both files are simple `KEY=value` shell variable assignments. Merged values are passed as `--build-arg` flags to `docker compose build`. The same args are passed to the standalone `docker build` call for `workspace/Dockerfile` if it exists.
 
 ### Dockerfile
 
@@ -166,11 +183,11 @@ Template-level hooks, MCP servers, and preferences that apply to all projects.
 
 ### Merge strategy (handled by entrypoint at startup)
 
-| Type | Strategy |
-|------|----------|
-| Hooks | **Additive** — local hooks appended to template hooks |
-| MCP servers | **Additive** — local servers added to template servers |
-| Scalar values | **Local wins** |
+| Type | Collision behavior |
+|------|-------------------|
+| Hooks | **Append per event** — local hooks are appended to the template's hook array for each event (e.g., `PostToolUse`). Both fire. If this causes double-firing (e.g., two formatters on the same file type), it's the project's responsibility to not duplicate template hooks. |
+| MCP servers | **Local wins per key** — if both template and local define server `n8n`, local's definition replaces template's for that key. New keys from local are added. |
+| Scalar values | **Local wins** — local value replaces template value |
 
 The entrypoint merges both files into `~/.claude/settings.json` inside the container. Source files stay untouched.
 
@@ -223,20 +240,30 @@ Run on the host machine, manage the container lifecycle:
 | `claude` | Exec Claude in YOLO mode |
 | `shell` | Interactive bash in container |
 | `status` | Show versions, mounts, health |
-| `setup` | Initialize project structure (adopt/clone/link/empty) |
-| `quick-setup` | One-shot project onboarding |
-| `compose-args` | Shared library (config merge, compose file detection) |
+| `setup` | Post-submodule-add project setup (create workspace/, copy .env.example, etc.) |
+| `exec` | Run a workspace/bin/ script inside the container |
+| `compose-args` | Shared library (config merge, compose file detection, build-arg resolution) |
 | `update` | `git submodule update --remote` wrapper |
 
 ### Container-side scripts (`workspace/bin/`, project-owned)
 
-Project-specific scripts that run inside the container. Example: `bin/n8n` for switching n8n environments.
+Project-specific scripts that run inside the container. Example: `n8n` for switching n8n environments.
 
 ### Dispatch mechanism
 
-When `bin/<name>` doesn't exist in `claude-container/bin/`, a catch-all dispatcher looks in `../workspace/bin/<name>` and executes it inside the container via `docker compose exec`. From the user's perspective, it's always `bin/whatever` from the `claude-container/` directory.
+`bin/exec` is an explicit dispatcher: `bin/exec n8n dev` runs `../workspace/bin/n8n dev` inside the container via `docker compose exec`. No symlink magic, no catch-all — the user knows they're running a workspace script.
 
-Additionally, the entrypoint adds `workspace/bin/` to `PATH` inside the container so scripts are available during interactive `bin/shell` sessions.
+Additionally, the entrypoint adds `/workspace/bin/` to `PATH` inside the container, so workspace scripts are also available during interactive `bin/shell` sessions without the `bin/exec` prefix.
+
+### `bin/setup` in the submodule model
+
+`bin/setup` runs **after** `git submodule add`. It does not add the submodule itself (that's a manual step documented in QUICKSTART). What it does:
+
+1. Creates `../workspace/` directory if missing
+2. Copies `.env.example` to `.env` if `.env` doesn't exist
+3. Prompts for `COMPOSE_PROJECT_NAME` and writes it to `.env`
+4. Creates `../workspace/bin/` directory
+5. Optionally adopts an existing project (moves files into `../workspace/`)
 
 ---
 
@@ -279,10 +306,14 @@ or entrypoint: update QUICKSTART.md and docs/guide.md to reflect the changes.
 ### Step 1: Consolidate the template repo
 
 - Use business-agents copy as baseline (most advanced)
-- Strip project-specific content (n8n script, PHP hooks, postgres config)
-- Apply build-arg toggles to Dockerfile
+- Strip project-specific content (n8n script, PHP hooks, postgres config, n8n env vars from quick-setup)
+- Apply build-arg toggles to Dockerfile (default `INSTALL_PHP=false`, `INSTALL_COMPOSER=false`)
 - Replace `bin/pull` (rsync) with `bin/update` (submodule)
+- Replace `bin/quick-setup` with simplified `bin/setup` (post-submodule-add helper)
+- Add `bin/exec` dispatcher
+- Update `.gitignore`: track `settings.container.json`, ignore `build.local.conf` and `settings.container.local.json`
 - Add docs (QUICKSTART.md, docs/guide.md, CLAUDE.md)
+- Enforce `COMPOSE_PROJECT_NAME` in `bin/start`
 - Commit and push to private GitHub repo
 
 ### Step 2: Migrate business-agents
