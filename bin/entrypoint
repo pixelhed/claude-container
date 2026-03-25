@@ -67,8 +67,9 @@ fi
 # ---------------------------------------------------------------
 # 1b. Merge settings (template + local overlay)
 # ---------------------------------------------------------------
-SETTINGS_BASE="$CLAUDE_HOME/settings.container.json"
-SETTINGS_LOCAL="$CLAUDE_HOME/settings.container.local.json"
+SETTINGS_DIR="/home/node/.claude-settings"
+SETTINGS_BASE="$SETTINGS_DIR/settings.container.json"
+SETTINGS_LOCAL="$SETTINGS_DIR/settings.container.local.json"
 SETTINGS_OUT="$CLAUDE_HOME/settings.json"
 
 if [ -f "$SETTINGS_BASE" ]; then

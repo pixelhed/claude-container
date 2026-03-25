@@ -18,9 +18,9 @@ services:
       - claude-config:/home/node/.claude
       - claude-history:/home/node/.bash_history_dir
 
-      # ── Settings (merged by entrypoint) ──
-      - ./settings.container.json:/home/node/.claude/settings.container.json:ro
-      - ./settings.container.local.json:/home/node/.claude/settings.container.local.json:ro
+      # ── Settings (read by entrypoint, NOT inside .claude volume) ──
+      - ./settings.container.json:/home/node/.claude-settings/settings.container.json:ro
+      - ./settings.container.local.json:/home/node/.claude-settings/settings.container.local.json:ro
 
       # ── Git + SSH (read-only) ──
       - ~/.gitconfig:/home/node/.gitconfig:ro
