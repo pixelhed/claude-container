@@ -19,14 +19,6 @@ if [ -d "$ECOSYSTEM_DIR/global" ]; then
     [ -f "$ECOSYSTEM_DIR/global/CLAUDE.md" ] && \
         ln -sf "$ECOSYSTEM_DIR/global/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
 
-    if [ -f "$CLAUDE_HOME/settings.container.json" ]; then
-        cp -f "$CLAUDE_HOME/settings.container.json" "$CLAUDE_HOME/settings.json"
-        echo "   Using container-specific settings.json (writable copy)"
-    elif [ -f "$ECOSYSTEM_DIR/global/settings.json" ]; then
-        cp -f "$ECOSYSTEM_DIR/global/settings.json" "$CLAUDE_HOME/settings.json"
-        echo "   Using ecosystem settings.json (writable copy)"
-    fi
-
     if [ -d "$ECOSYSTEM_DIR/global/commands" ]; then
         mkdir -p "$CLAUDE_HOME/commands"
         for dir in "$ECOSYSTEM_DIR/global/commands"/*/; do
@@ -73,6 +65,39 @@ else
 fi
 
 # ---------------------------------------------------------------
+# 1b. Merge settings (template + local overlay)
+# ---------------------------------------------------------------
+SETTINGS_BASE="$CLAUDE_HOME/settings.container.json"
+SETTINGS_LOCAL="$CLAUDE_HOME/settings.container.local.json"
+SETTINGS_OUT="$CLAUDE_HOME/settings.json"
+
+if [ -f "$SETTINGS_BASE" ]; then
+    if [ -f "$SETTINGS_LOCAL" ] && [ -s "$SETTINGS_LOCAL" ]; then
+        echo "   Merging settings (base + local overlay)..."
+        # jq merge: hooks arrays are concatenated, MCP servers local-wins-per-key, scalars local-wins
+        jq -s '
+          def merge_hooks:
+            if (.[0].hooks // {}) == {} and (.[1].hooks // {}) == {} then {}
+            elif (.[1].hooks // {}) == {} then {hooks: .[0].hooks}
+            elif (.[0].hooks // {}) == {} then {hooks: .[1].hooks}
+            else {hooks: (.[0].hooks // {} | to_entries | map({key: .key, value: .value}) |
+              reduce .[] as $e ({}; .[$e.key] = $e.value)) as $base |
+              (.[1].hooks // {} | to_entries |
+              reduce .[] as $e ($base; .[$e.key] = (.[$e.key] // []) + $e.value)) |
+              {hooks: .}}
+            end;
+          def merge_mcp:
+            {mcpServers: ((.[0].mcpServers // {}) * (.[1].mcpServers // {}))};
+          .[0] * .[1] * (. | merge_hooks) * (. | merge_mcp)
+        ' "$SETTINGS_BASE" "$SETTINGS_LOCAL" > "$SETTINGS_OUT"
+        echo "   Settings merged into settings.json"
+    else
+        cp -f "$SETTINGS_BASE" "$SETTINGS_OUT"
+        echo "   Using base settings.json (no local overlay)"
+    fi
+fi
+
+# ---------------------------------------------------------------
 # 2. Auto-install GSD if not present in volume
 # ---------------------------------------------------------------
 if [ ! -d "$CLAUDE_HOME/commands/gsd" ] && command -v npx &>/dev/null; then
@@ -86,11 +111,18 @@ fi
 # ---------------------------------------------------------------
 # 3. Auto-install plugins if not present in volume
 # ---------------------------------------------------------------
-if ! grep -q "n8n-mcp-skills" "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null; then
+PLUGINS_FILE="$CLAUDE_HOME/plugins/installed_plugins.json"
+NEED_INSTALL=0
+for check in "n8n-mcp-skills" "context7" "superpowers"; do
+    grep -q "$check" "$PLUGINS_FILE" 2>/dev/null || { NEED_INSTALL=1; break; }
+done
+if [ "$NEED_INSTALL" = "1" ]; then
     echo "📦 Installing plugins..."
     claude plugin marketplace add czlonkowski/n8n-skills 2>&1 || true
-    claude plugin install n8n-mcp-skills 2>&1 || true
-    claude plugin install context7 2>&1 || true
+    claude plugin marketplace add obra/superpowers-marketplace 2>&1 || true
+    grep -q "n8n-mcp-skills" "$PLUGINS_FILE" 2>/dev/null || claude plugin install n8n-mcp-skills 2>&1 || true
+    grep -q "context7" "$PLUGINS_FILE" 2>/dev/null || claude plugin install context7 2>&1 || true
+    grep -q "superpowers" "$PLUGINS_FILE" 2>/dev/null || claude plugin install superpowers@superpowers-marketplace 2>&1 || true
     echo "   ✅ Plugins installed"
 else
     echo "   ✓ Plugins already installed"
@@ -102,6 +134,15 @@ fi
 if [ "${SKIP_UPDATE_CHECK:-0}" != "1" ]; then
     update-packages &
 fi
+
+# ---------------------------------------------------------------
+# 4b. Add workspace/bin to PATH
+# ---------------------------------------------------------------
+if [ -d "/workspace/bin" ]; then
+    export PATH="/workspace/bin:$PATH"
+    echo "   workspace/bin added to PATH"
+fi
+echo 'export PATH="/workspace/bin:$PATH"' >> /home/node/.bashrc
 
 # ---------------------------------------------------------------
 # 5. Ready
