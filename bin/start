@@ -2,13 +2,29 @@
 ## Host: Build and start the Claude Code container
 
 set -e
-cd "$(dirname "$0")/.."
+source "$(dirname "$0")/compose-args"
 
-docker compose build
-docker compose up -d
+# Ensure COMPOSE_PROJECT_NAME is set
+if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
+    # Try loading from .env
+    [ -f ".env" ] && source .env
+    if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
+        echo "COMPOSE_PROJECT_NAME is not set in .env"
+        echo "This is required to prevent container name collisions."
+        echo ""
+        echo "Add to .env:  COMPOSE_PROJECT_NAME=myproject"
+        exit 1
+    fi
+fi
+
+# Ensure settings.container.local.json exists (needed for Docker mount)
+[ ! -f "settings.container.local.json" ] && echo '{}' > settings.container.local.json
+
+build_images
+docker compose $COMPOSE_FILES up -d
 
 echo ""
-echo "✅ Container running. Project mounted at /workspace"
+echo "Container running. Project mounted at /workspace"
 echo ""
 echo "  bin/shell              Open a shell inside the container"
 echo "  bin/claude             Run Claude Code in YOLO mode"
