@@ -1,0 +1,53 @@
+#!/bin/bash
+## Shared: Sets COMPOSE_FILES and provides build_images() for workspace extension
+## Source this from other scripts: source "$(dirname "$0")/compose-args"
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+COMPOSE_FILES="-f docker-compose.yml"
+
+if [ -f "../workspace/docker-compose.yml" ]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f ../workspace/docker-compose.yml"
+fi
+
+# ── Load build config (base + local overlay) ──
+BUILD_ARGS=""
+load_build_config() {
+    # Source defaults
+    [ -f "build.conf" ] && source "build.conf"
+    # Overlay local overrides (wins on collision)
+    [ -f "build.local.conf" ] && source "build.local.conf"
+
+    # Collect all INSTALL_* vars as build args
+    BUILD_ARGS=""
+    for var in INSTALL_PHP INSTALL_PYTHON INSTALL_COMPOSER; do
+        val="${!var}"
+        [ -n "$val" ] && BUILD_ARGS="$BUILD_ARGS --build-arg $var=$val"
+    done
+}
+
+load_build_config
+
+## Build images, with optional workspace Dockerfile extension.
+## If workspace/Dockerfile exists, the base image is built first,
+## then extended and tagged with the same name (replacing it).
+## Usage: build_images [--no-cache]
+build_images() {
+    local cache_flag=""
+    [ "${1:-}" = "--no-cache" ] && cache_flag="--no-cache"
+
+    docker compose -f docker-compose.yml build $cache_flag $BUILD_ARGS
+
+    if [ -f "../workspace/Dockerfile" ]; then
+        local base_image
+        base_image=$(docker compose -f docker-compose.yml config --images 2>/dev/null | head -1)
+
+        echo "Extending with workspace Dockerfile..."
+        docker build $cache_flag $BUILD_ARGS \
+            --build-arg BASE_IMAGE="$base_image" \
+            -t "$base_image" \
+            -f "../workspace/Dockerfile" \
+            "../workspace"
+        echo "   Image extended: $base_image"
+    fi
+}
