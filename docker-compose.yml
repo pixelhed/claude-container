@@ -22,8 +22,10 @@ services:
       - ./settings.container.json:/home/node/.claude/settings.container.json:ro
       - ./settings.container.local.json:/home/node/.claude/settings.container.local.json:ro
 
-      # ── Git config (read-only) ──
+      # ── Git + GitHub (read-only) ──
       - ~/.gitconfig:/home/node/.gitconfig:ro
+      - ~/.ssh:/home/node/.ssh:ro
+      - ~/.config/gh:/home/node/.config/gh:ro
 
     cap_add:
       - NET_ADMIN
